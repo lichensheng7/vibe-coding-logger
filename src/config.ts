@@ -8,6 +8,9 @@ export const CONFIG = {
 	get dbPath() { return env.DB_PATH ?? `${this.dataDir}/vibe-coding-logger.db`; },
 	/** Comma-separated Bearer tokens. Empty = one is generated on first start and saved to DATA_DIR/api_token. */
 	apiTokens: (env.API_TOKEN ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+	/** Admin password for the web UI login (sessions). Empty = password login disabled. */
+	adminPassword: env.ADMIN_PASSWORD ?? "",
+	sessionDays: num(env.SESSION_DAYS, 30),
 	/** Allow GET requests without a token (read-only public demo). */
 	publicRead: /^(1|true|yes)$/i.test(env.PUBLIC_READ ?? ""),
 	maxBodyMb: num(env.MAX_BODY_MB, 64),

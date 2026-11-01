@@ -2,8 +2,8 @@
  "openapi": "3.1.0",
  "info": {
   "title": "Vibe Coding Logger API",
-  "version": "0.1.0",
-  "description": "记录与 AI 的 vibe coding 聊天。项目(project)隔离，消息(message)按 seq 连续排序；每条 user 消息开启新的一轮(turn)，其后的 assistant/tool/system/note 都属于这一轮。\n\n鉴权：`Authorization: Bearer <API_TOKEN>`（也可用 `X-API-Token` 头或 `?token=`）。\n\n时间字段均为毫秒时间戳；写入时 sent_at 也接受秒级时间戳或 ISO 字符串。"
+  "version": "0.2.0",
+  "description": "记录与 AI 的 vibe coding 聊天。项目(project)隔离，消息(message)按 seq 连续排序；每条 user 消息开启新的一轮(turn)，其后的 assistant/tool/system/note 都属于这一轮。\n\n鉴权：网页用管理员密码登录（POST /api/auth/login 换取会话 token）；程序/AI 推送用 API Token。两者都放在 `Authorization: Bearer <API_TOKEN>`（也可用 `X-API-Token` 头或 `?token=`）。\n\n时间字段均为毫秒时间戳；写入时 sent_at 也接受秒级时间戳或 ISO 字符串。"
  },
  "servers": [
   {
@@ -16,6 +16,9 @@
   }
  ],
  "tags": [
+  {
+   "name": "auth"
+  },
   {
    "name": "projects"
   },
@@ -373,7 +376,8 @@
       "required": false,
       "schema": {
        "type": "string"
-      }
+      },
+      "description": "角色过滤，可逗号分隔多个：user / assistant / user,assistant"
      },
      {
       "name": "author",
@@ -390,7 +394,7 @@
       "schema": {
        "type": "string"
       },
-      "description": "内容搜索"
+      "description": "在本项目内搜索内容或身份"
      },
      {
       "name": "turn",
@@ -797,7 +801,7 @@
       }
      }
     },
-    "description": "例：{filter:{author:\"ChatGPT\"}, set:{author:\"GPT-5\"}}",
+    "description": "按勾选的 ids 或 filter 批量修改。例：{ids:[...], set:{author:\"GPT-5\"}} 或 {filter:{author:\"ChatGPT\"}, set:{role:\"assistant\"}}",
     "parameters": [
      {
       "name": "id",
@@ -1277,7 +1281,7 @@
       "schema": {
        "type": "string"
       },
-      "description": "text 格式自定义说话人映射：Kiro=assistant,老王=user"
+      "description": "text 格式说话人映射：A=AI,B=user,C=tool/bash（名字=角色[/身份]）。提供后只按这些名字分段"
      },
      {
       "name": "dry_run",
@@ -1542,6 +1546,101 @@
       }
      }
     ]
+   }
+  },
+  "/api/auth/login": {
+   "post": {
+    "summary": "管理员密码登录，返回 {token, expires_at}（会话 token，作 Bearer 使用）",
+    "tags": [
+     "auth"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "password"
+        ],
+        "properties": {
+         "password": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "summary": "注销当前会话",
+    "tags": [
+     "auth"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/api/auth/check": {
+   "get": {
+    "summary": "检查 token/会话是否有效",
+    "tags": [
+     "auth"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/api/auth/api-token": {
+   "get": {
+    "summary": "取回 API Token（交给整理 AI 用）",
+    "tags": [
+     "auth"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/api/tools/detect-speakers": {
+   "post": {
+    "summary": "识别纯文本记录里「名字:」开头的说话人及出现次数、建议角色",
+    "tags": [
+     "import-export"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     },
+     "description": "原始聊天文本"
+    }
    }
   }
  },

@@ -113,13 +113,15 @@ route("POST", "/api/projects/:id/import", async ({ params, raw, query }) => {
 	else if (fmt === "jsonl") msgs = IO.parseJsonl(text);
 	else if (fmt === "md" || fmt === "markdown") msgs = IO.parseMarkdown(text).messages;
 	else if (fmt === "text" || fmt === "txt") {
-		const speakers = Object.fromEntries((query.get("speakers") ?? "").split(",").filter((s) => s.includes("=")).map((s) => s.split("=").map((x) => x.trim())));
-		msgs = IO.parseTranscript(text, speakers);
+		msgs = IO.parseTranscript(text, query.get("speakers"));
 	} else throw new HttpError(400, "format 只能是 json / jsonl / md / text");
-	if (query.get("dry_run") === "1") return ok({ format: fmt, count: msgs.length, preview: msgs.slice(0, 20).map((m, i) => S.normMessage(m, i)) });
+	if (query.get("dry_run") === "1") return ok({ format: fmt, count: msgs.length, preview: msgs.slice(0, 50).map((m, i) => S.normMessage(m, i)), ...(fmt === "text" ? { speakers_detected: IO.detectSpeakers(text) } : {}) });
 	const r = S.insertMessages(params.id, msgs, { position: query.get("position") ?? undefined, after_id: query.get("after_id") ?? undefined, on_duplicate: query.get("on_duplicate") ?? undefined });
 	return created({ format: fmt, ...r, items: undefined });
 });
+
+// Find "Name:" prefixes in a raw transcript so the user can map them (A=AI, B=user).
+route("POST", "/api/tools/detect-speakers", async ({ raw }) => ok(IO.detectSpeakers(await raw())));
 
 /* ------------------------------ search / meta ------------------------------ */
 route("GET", "/api/search", ({ query }) => ok(S.search(query.get("q") ?? "", query.get("project_id"), int(query.get("limit"), 50, 1, 500))));

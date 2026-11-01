@@ -82,33 +82,78 @@ export function parseMarkdown(md: string): { project?: any; messages: any[] } {
 }
 
 /* -------------------------- loose plain-text transcript -------------------------- */
-// "用户: …" / "我：" / "User:" / "AI:" / "Assistant:" / "Claude:" / "[tool] …" start a new message;
-// following lines belong to it. Custom speakers can be mapped with ?speakers=Name=role,Other=role
-export function parseTranscript(text: string, speakers: Record<string, string> = {}): any[] {
-	const known: Record<string, string> = {
-		"用户": "user", "我": "user", user: "user", me: "user", human: "user", "you": "user", "q": "user", "问": "user",
-		ai: "assistant", assistant: "assistant", "助手": "assistant", bot: "assistant", chatgpt: "assistant", gpt: "assistant", claude: "assistant",
-		gemini: "assistant", cursor: "assistant", copilot: "assistant", "a": "assistant", "答": "assistant",
-		system: "system", "系统": "system", tool: "tool", "工具": "tool", terminal: "tool", note: "note", "备注": "note",
-	};
-	for (const [k, v] of Object.entries(speakers)) known[k.toLowerCase()] = normRole(v);
-	const names = Object.keys(known).sort((a, b) => b.length - a.length).map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-	const re = new RegExp(`^\\s*(?:\\*\\*|#+\\s*)?\\[?(${names.join("|")})\\]?(?:\\s*[（(]([^）)]{1,60})[）)])?(?:\\*\\*)?\\s*[:：]\\s?(.*)$`, "i");
-	const out: any[] = []; let cur: any = null;
+type Speaker = { role: string; author: string | null };
+const ROLE_WORDS = new Set(["用户", "我", "user", "me", "human", "you", "q", "问", "ai", "assistant", "助手", "bot", "a", "答", "system", "系统", "tool", "工具", "terminal", "note", "备注"]);
+const DEFAULT_SPEAKERS: Record<string, string> = {
+	"用户": "user", "我": "user", user: "user", me: "user", human: "user", you: "user", q: "user", "问": "user",
+	ai: "assistant", assistant: "assistant", "助手": "assistant", bot: "assistant", chatgpt: "assistant", gpt: "assistant", claude: "assistant",
+	gemini: "assistant", cursor: "assistant", copilot: "assistant", a: "assistant", "答": "assistant",
+	system: "system", "系统": "system", tool: "tool", "工具": "tool", terminal: "tool", note: "note", "备注": "note",
+};
+
+/**
+ * "A=AI, B=user, C=assistant/Claude Code, D=tool(bash)" → speaker map.
+ * Value is a role (aliases ok: AI, 用户, 助手…), optionally followed by /author or (author).
+ */
+export function parseSpeakers(spec: string | Record<string, string> | null | undefined): Record<string, Speaker> {
+	const out: Record<string, Speaker> = {};
+	if (!spec) return out;
+	const pairs = typeof spec === "string"
+		? spec.split(/[,，;；\n]+/).map((x) => x.trim()).filter(Boolean).map((x) => { const i = x.search(/[=＝]/); if (i < 1) throw new HttpError(400, `说话人映射格式应为 名字=角色，收到: ${x}`); return [x.slice(0, i).trim(), x.slice(i + 1).trim()]; })
+		: Object.entries(spec);
+	for (const [name, val] of pairs) {
+		const m = String(val).match(/^([^/(（]+?)\s*(?:[/／]\s*(.+)|[（(]\s*(.+?)\s*[)）])?\s*$/);
+		if (!m) throw new HttpError(400, `无法解析说话人映射: ${name}=${val}`);
+		out[String(name).toLowerCase()] = { role: normRole(m[1]), author: (m[2] ?? m[3] ?? "").trim() || null };
+	}
+	return out;
+}
+
+const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const speakerRe = (names: string[]) => new RegExp(`^\\s*(?:\\*\\*|#+\\s*|>\\s*)?\\[?(${names.sort((a, b) => b.length - a.length).map(escRe).join("|")})\\]?(?:\\s*[（(]([^）)]{1,60})[）)])?(?:\\*\\*)?\\s*[:：](?:\\*\\*)?\\s?(.*)$`, "i");
+
+/**
+ * Splits a transcript where each message starts with "Speaker:" / "Speaker：".
+ * With a speaker map only those speakers start messages (strict); without one, common names (用户/我/AI/Claude/…) are used.
+ */
+export function parseTranscript(text: string, speakersSpec?: string | Record<string, string> | null): any[] {
+	const custom = parseSpeakers(speakersSpec);
+	const strict = Object.keys(custom).length > 0;
+	const map: Record<string, Speaker> = strict ? custom
+		: Object.fromEntries(Object.entries(DEFAULT_SPEAKERS).map(([k, r]) => [k, { role: r, author: null }]));
+	const re = speakerRe(Object.keys(map));
+	const out: any[] = []; let cur: any = null; let fence = false;
 	for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
-		const m = line.match(re);
+		const m = fence ? null : line.match(re);
 		if (m) {
 			if (cur) out.push(cur);
-			const who = m[1];
-			const role = known[who.toLowerCase()];
-			const generic = ["用户", "我", "user", "me", "human", "you", "q", "问", "ai", "assistant", "助手", "bot", "a", "答", "system", "系统", "tool", "工具", "note", "备注"].includes(who.toLowerCase());
-			cur = { role, author: m[2] ?? (generic ? null : who), content: m[3] ?? "" };
+			const who = m[1], sp = map[who.toLowerCase()];
+			const author = m[2] ?? sp.author ?? (strict || ROLE_WORDS.has(who.toLowerCase()) ? null : who);
+			cur = { role: sp.role, author, content: m[3] ?? "" };
 		} else if (cur) cur.content += (cur.content ? "\n" : "") + line;
+		if (/^\s*(```|~~~)/.test(line)) fence = !fence; // speaker-looking lines inside code fences are content
 	}
 	if (cur) out.push(cur);
 	for (const m of out) m.content = m.content.replace(/^\n+|\s+$/g, "");
-	if (!out.length) throw new HttpError(400, "没识别到说话人。每段以 \"用户:\" / \"AI:\" / \"Claude:\" 等开头，或用 speakers 参数映射自定义名字");
+	if (!out.length) throw new HttpError(400, strict ? "没有找到映射里的说话人，检查名字是否和记录里冒号前的一致" : "没识别到说话人。每段以 \"用户:\" / \"AI:\" 等开头，或用 speakers 自定义，如 A=AI,B=user");
 	return out;
+}
+
+/** Guess which "Xxx:" prefixes are speakers, for the import dialog. */
+export function detectSpeakers(text: string) {
+	const counts = new Map<string, { name: string; count: number; sample: string }>();
+	let fence = false;
+	for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+		if (/^\s*(```|~~~)/.test(line)) { fence = !fence; continue; }
+		if (fence) continue;
+		const m = line.match(/^\s*(?:\*\*|#+\s*|>\s*)?\[?([^\s:：\[\]*#>]{1,24}(?:\s[^\s:：\[\]*#>]{1,12})?)\]?(?:\s*[（(][^）)]{1,60}[）)])?(?:\*\*)?\s*[:：](?!\/\/)\s?(.*)$/);
+		if (!m || /^(https?|ftp|ws|wss|file|mailto|[a-z]:|\d+)$/i.test(m[1])) continue;
+		const k = m[1].toLowerCase();
+		const e = counts.get(k) ?? { name: m[1], count: 0, sample: m[2].slice(0, 60) };
+		e.count++; counts.set(k, e);
+	}
+	return [...counts.values()].filter((e) => e.count >= 1).sort((a, b) => b.count - a.count).slice(0, 12)
+		.map((e) => ({ ...e, suggested_role: DEFAULT_SPEAKERS[e.name.toLowerCase()] ?? null }));
 }
 
 /* --------------------------------- import --------------------------------- */

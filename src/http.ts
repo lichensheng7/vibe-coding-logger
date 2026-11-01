@@ -2,12 +2,13 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { CONFIG } from "./config.ts";
-import { HttpError, timingSafeEqual } from "./util.ts";
+import { HttpError, now, timingSafeEqual } from "./util.ts";
+import { db } from "./db.ts";
 
 export type Ctx = {
 	req: IncomingMessage; res: ServerResponse; url: URL;
 	params: Record<string, string>; query: URLSearchParams;
-	body: () => Promise<any>; raw: () => Promise<string>;
+	body: () => Promise<any>; raw: () => Promise<string>; token: string;
 };
 type Handler = (c: Ctx) => Promise<any> | any;
 type Access = "auth" | "read" | "public";
@@ -37,7 +38,23 @@ if (!TOKENS.length) {
 }
 const tokenOf = (req: IncomingMessage, url: URL) =>
 	(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim() || String(req.headers["x-api-token"] ?? "") || url.searchParams.get("token") || "";
-export const isAuthed = (t: string) => !!t && TOKENS.some((k) => timingSafeEqual(t, k));
+export const isApiToken = (t: string) => !!t && TOKENS.some((k) => timingSafeEqual(t, k));
+/* ------------------------- admin password sessions ------------------------- */
+export const checkPassword = (pw: string) => !!CONFIG.adminPassword && timingSafeEqual(pw, CONFIG.adminPassword);
+export function createSession() {
+	const token = "sess_" + randomBytes(24).toString("hex");
+	const expires_at = now() + CONFIG.sessionDays * 86400_000;
+	db.run("INSERT INTO sessions (token, expires_at, created_at) VALUES (?,?,?)", token, expires_at, now());
+	db.run("DELETE FROM sessions WHERE expires_at < ?", now());
+	return { token, expires_at };
+}
+export function validSession(t: string) {
+	if (!t.startsWith("sess_")) return false;
+	const s = db.get<{ expires_at: number }>("SELECT expires_at FROM sessions WHERE token=?", t);
+	return !!s && s.expires_at > now();
+}
+export const dropSession = (t: string) => db.run("DELETE FROM sessions WHERE token=?", t);
+export const isAuthed = (t: string) => isApiToken(t) || validSession(t);
 
 /* -------------------------------- plumbing --------------------------------- */
 const readRaw = (req: IncomingMessage) => new Promise<string>((resolve, reject) => {
@@ -70,10 +87,11 @@ export function startHttp() {
 				pathMatched = true;
 				if (r.method !== req.method) continue;
 				const needAuth = r.access === "auth" || (r.access === "read" && !CONFIG.publicRead);
-				if (needAuth && !isAuthed(tokenOf(req, url))) throw new HttpError(401, "未授权：缺少或错误的 API Token（Authorization: Bearer <token>）");
+				const tok = tokenOf(req, url);
+				if (needAuth && !isAuthed(tok)) throw new HttpError(401, "未授权：请登录，或提供 API Token（Authorization: Bearer <token>）");
 				let rawP: Promise<string> | undefined;
 				const ctx: Ctx = {
-					req, res, url, query: url.searchParams,
+					req, res, url, query: url.searchParams, token: tok,
 					params: Object.fromEntries(r.keys.map((k, i) => [k, decodeURIComponent(m[i + 1])])),
 					raw: () => (rawP ??= readRaw(req)),
 					body: async () => parseJson(await (rawP ??= readRaw(req))),

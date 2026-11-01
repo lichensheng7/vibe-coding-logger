@@ -1,7 +1,7 @@
 import { readdirSync, statSync, unlinkSync, mkdirSync, readFileSync, createReadStream } from "node:fs";
 import { sqlite } from "./db.ts";
 import { CONFIG } from "./config.ts";
-import { route, ok, created, startHttp } from "./http.ts";
+import { route, ok, created, startHttp, checkPassword, createSession, dropSession, TOKENS } from "./http.ts";
 import { HttpError } from "./util.ts";
 import "./routes.ts";
 
@@ -10,9 +10,34 @@ const UI = readFileSync(new URL("./ui.html", import.meta.url), "utf8");
 const OPENAPI = readFileSync(new URL("./openapi.json", import.meta.url), "utf8");
 
 route("GET", "/", ({ res }) => { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(UI); }, "public");
-route("GET", "/api/health", () => ok({ status: "ok", version: VERSION, public_read: CONFIG.publicRead }), "public");
+route("GET", "/api/health", () => ok({ status: "ok", version: VERSION, public_read: CONFIG.publicRead, password_login: !!CONFIG.adminPassword }), "public");
+for (const f of ["logo.svg", "favicon.svg"]) {
+	const svg = readFileSync(new URL(`./assets/${f}`, import.meta.url));
+	route("GET", `/${f}`, ({ res }) => { res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" }); res.end(svg); }, "public");
+}
+const PNG = readFileSync(new URL("./assets/favicon.png", import.meta.url));
+for (const f of ["/favicon.png", "/favicon.ico", "/apple-touch-icon.png"]) route("GET", f, ({ res }) => { res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" }); res.end(PNG); }, "public");
 route("GET", "/api/openapi.json", ({ res }) => { res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" }); res.end(OPENAPI); }, "public");
+/* ---------------------------------- login ---------------------------------- */
+const fails = new Map<string, { n: number; until: number }>();
+route("POST", "/api/auth/login", async ({ body, req }) => {
+	if (!CONFIG.adminPassword) throw new HttpError(400, "未设置 ADMIN_PASSWORD，密码登录未启用");
+	const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+	const f = fails.get(ip);
+	if (f && f.n >= 10 && f.until > Date.now()) throw new HttpError(429, "失败次数过多，请 15 分钟后再试");
+	const { password } = await body();
+	if (!checkPassword(String(password ?? ""))) {
+		const n = f && f.until > Date.now() ? f.n + 1 : 1;
+		fails.set(ip, { n, until: Date.now() + 15 * 60_000 });
+		throw new HttpError(401, "密码错误");
+	}
+	fails.delete(ip);
+	return ok(createSession());
+}, "public");
+route("POST", "/api/auth/logout", ({ token }) => { dropSession(token); return ok(); }, "auth");
 route("GET", "/api/auth/check", () => ok({ authed: true }), "auth");
+// Lets the logged-in admin copy the API token to hand to an organizing AI.
+route("GET", "/api/auth/api-token", () => ok({ token: TOKENS[0] }), "auth");
 
 /* ------------------------------ automatic backups ------------------------------ */
 const backupDir = `${CONFIG.dataDir}/backups`;

@@ -22,7 +22,7 @@ async function api(method: string, path: string, body?: unknown, opts: { raw?: s
 
 before(async () => {
 	dir = mkdtempSync(`${tmpdir()}/vcl-test-`);
-	srv = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "src/server.ts"], { env: { ...process.env, PORT: String(PORT), DATA_DIR: dir, API_TOKEN: TOKEN, HOST: "127.0.0.1" }, stdio: "ignore" });
+	srv = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "src/server.ts"], { env: { ...process.env, PORT: String(PORT), DATA_DIR: dir, API_TOKEN: TOKEN, ADMIN_PASSWORD: "pw-test", HOST: "127.0.0.1" }, stdio: "ignore" });
 	for (let i = 0; i < 50; i++) { try { if ((await fetch(BASE + "/api/health")).ok) return; } catch {} await new Promise((r) => setTimeout(r, 100)); }
 	throw new Error("server did not start");
 });
@@ -167,16 +167,51 @@ test("export json/jsonl/md and re-import round trip", async () => {
 	assert.ok(all.json.projects.length >= 4);
 });
 
-test("plain-text transcript import", async () => {
+test("plain-text transcript import (default speakers)", async () => {
 	const p = (await api("POST", "/api/projects", { name: "Transcript" })).json.data;
-	const text = "用户：帮我装 docker\n顺便配置镜像源\nClaude: 好的，先执行\n```bash\ncurl -fsSL get.docker.com | sh\n```\nAI（GPT-5）: 第二条回复\nKiro: custom speaker\n我: 谢谢";
-	const dry = await api("POST", `/api/projects/${p.id}/import?format=text&speakers=Kiro=assistant&dry_run=1`, undefined, { raw: text });
-	assert.equal(dry.json.data.count, 5);
-	await api("POST", `/api/projects/${p.id}/import?format=text&speakers=Kiro=assistant`, undefined, { raw: text });
+	const text = "用户：帮我装 docker\n顺便配置镜像源\nClaude: 好的，先执行\n```bash\nuser: not a speaker inside code\ncurl -fsSL get.docker.com | sh\n```\nAI（GPT-5）: 第二条回复\n我: 谢谢";
+	const dry = await api("POST", `/api/projects/${p.id}/import?format=text&dry_run=1`, undefined, { raw: text });
+	assert.equal(dry.json.data.count, 4);
+	await api("POST", `/api/projects/${p.id}/import?format=text`, undefined, { raw: text });
 	const l = (await api("GET", `/api/projects/${p.id}/messages`)).json.data;
-	assert.deepEqual(l.map((m: any) => [m.role, m.author]), [["user", null], ["assistant", "Claude"], ["assistant", "GPT-5"], ["assistant", "Kiro"], ["user", null]]);
+	assert.deepEqual(l.map((m: any) => [m.role, m.author]), [["user", null], ["assistant", "Claude"], ["assistant", "GPT-5"], ["user", null]]);
 	assert.equal(l[0].content, "帮我装 docker\n顺便配置镜像源");
-	assert.match(l[1].content, /get.docker.com/);
+	assert.match(l[1].content, /user: not a speaker inside code/);
+});
+
+test("plain-text transcript with custom speaker map A=AI, B=user", async () => {
+	const p = (await api("POST", "/api/projects", { name: "AB" })).json.data;
+	const text = "B：帮我部署 nginx\nNote: 这一行不是说话人\nA：好的，先检查端口\nA: 80 已占用\nC：执行结果\n$ ss -ltnp\nB:可以";
+	const det = await api("POST", "/api/tools/detect-speakers", undefined, { raw: text });
+	assert.deepEqual(det.json.data.map((d: any) => d.name).slice(0, 2).sort(), ["A", "B"]);
+	const sp = encodeURIComponent("A=AI, B=user，C=tool/bash");
+	const r = await api("POST", `/api/projects/${p.id}/import?format=text&speakers=${sp}`, undefined, { raw: text });
+	assert.equal(r.json.data.created, 5);
+	const l = (await api("GET", `/api/projects/${p.id}/messages`)).json.data;
+	assert.deepEqual(l.map((m: any) => [m.role, m.author]), [["user", null], ["assistant", null], ["assistant", null], ["tool", "bash"], ["user", null]]);
+	assert.equal(l[0].content, "帮我部署 nginx\nNote: 这一行不是说话人");
+	assert.equal(l[4].content, "可以");
+	assert.equal((await api("POST", `/api/projects/${p.id}/import?format=text&speakers=A=robot`, undefined, { raw: text })).status, 400);
+	assert.equal((await api("POST", `/api/projects/${p.id}/import?format=text&speakers=X=user`, undefined, { raw: text })).status, 400);
+	const users = await api("GET", `/api/projects/${p.id}/messages?role=user`);
+	assert.equal(users.json.total, 2);
+	const both = await api("GET", `/api/projects/${p.id}/messages?role=user,assistant`);
+	assert.equal(both.json.total, 4);
+	const q = await api("GET", `/api/projects/${p.id}/messages?q=bash`);
+	assert.equal(q.json.total, 1);
+});
+
+test("admin password login sessions", async () => {
+	assert.equal((await api("POST", "/api/auth/login", { password: "nope" }, { token: null })).status, 401);
+	const r = await api("POST", "/api/auth/login", { password: "pw-test" }, { token: null });
+	assert.equal(r.status, 200);
+	const s = r.json.data.token;
+	assert.equal((await api("GET", "/api/projects", undefined, { token: s })).status, 200);
+	assert.equal((await api("GET", "/api/auth/api-token", undefined, { token: s })).json.data.token, TOKEN);
+	await api("POST", "/api/auth/logout", undefined, { token: s });
+	assert.equal((await api("GET", "/api/projects", undefined, { token: s })).status, 401);
+	assert.equal((await api("GET", "/favicon.svg", undefined, { token: null })).status, 200);
+	assert.equal((await api("GET", "/favicon.ico", undefined, { token: null })).status, 200);
 });
 
 test("search, stats, backups, openapi, ui", async () => {

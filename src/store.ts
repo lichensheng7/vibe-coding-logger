@@ -233,9 +233,9 @@ export function insertMessages(pidOrSlug: string, raw: any[], opts: InsertOpts =
 export function listMessages(pidOrSlug: string, o: { role?: string; author?: string; q?: string; turn?: number; from_seq?: number; limit: number; offset: number }) {
 	const p = getProject(pidOrSlug);
 	const where = ["m.project_id=?"], args: unknown[] = [p.id];
-	if (o.role) { where.push("m.role=?"); args.push(normRole(o.role)); }
+	if (o.role) { const rs = [...new Set(o.role.split(",").map((r) => r.trim()).filter(Boolean).map(normRole))]; where.push(`m.role IN (${rs.map(() => "?").join(",")})`); args.push(...rs); }
 	if (o.author) { where.push("m.author=?"); args.push(o.author); }
-	if (o.q) { where.push("m.content LIKE ?"); args.push(`%${o.q}%`); }
+	if (o.q) { where.push("(m.content LIKE ? OR m.author LIKE ?)"); args.push(`%${o.q}%`, `%${o.q}%`); }
 	if (o.from_seq) { where.push("m.seq>=?"); args.push(o.from_seq); }
 	const base = `SELECT m.*, (SELECT COUNT(*) FROM messages u WHERE u.project_id=m.project_id AND u.role='user' AND u.seq<=m.seq) turn FROM messages m WHERE ${where.join(" AND ")}`;
 	const sql = o.turn != null ? `SELECT * FROM (${base}) WHERE turn=?` : base;

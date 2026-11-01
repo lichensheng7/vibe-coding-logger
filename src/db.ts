@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msg_project_seq ON messages(project_id, seq);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_ext ON messages(project_id, ext_id) WHERE ext_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `);
 

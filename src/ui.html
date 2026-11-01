@@ -4,61 +4,92 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vibe Coding Logger</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
-	:root { --bg:#f6f7f9; --card:#fff; --line:#e3e6eb; --text:#1d2330; --muted:#6b7385; --accent:#3b6cf6;
-		--user:#eef3ff; --assistant:#fff; --system:#f4f4f5; --tool:#f2fbf4; --note:#fffaf0; }
+	:root { --bg:#f6f7f9; --card:#fff; --line:#e3e6eb; --text:#1d2330; --muted:#6b7385; --accent:#4f6cf7;
+		--user:#eef3ff; --assistant:#fff; --system:#f4f4f5; --tool:#f2fbf4; --note:#fffaf0; --sel:#fff4c2; }
 	* { box-sizing: border-box; }
 	body { margin:0; font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
-	header { display:flex; gap:10px; align-items:center; padding:10px 16px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
-	header b { font-size:15px; } header .sp { flex:1; }
-	main { display:grid; grid-template-columns:280px 1fr; height:calc(100vh - 51px); }
+	header { display:flex; gap:10px; align-items:center; padding:8px 16px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; height:52px; }
+	header img { width:30px; height:30px; } header b { font-size:15px; } header .sp { flex:1; }
+	main { display:grid; grid-template-columns:280px 1fr; height:calc(100vh - 52px); }
 	aside { border-right:1px solid var(--line); background:var(--card); overflow:auto; padding:10px; }
-	section { overflow:auto; padding:14px 18px 120px; }
+	section { overflow:auto; padding:0 18px 140px; }
 	button, select, input, textarea { font:inherit; }
-	button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; }
+	button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; white-space:nowrap; }
 	button:hover { border-color:var(--accent); color:var(--accent); }
 	button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+	button.on { background:#e8edff; border-color:var(--accent); color:var(--accent); }
 	button.danger:hover { border-color:#d33; color:#d33; }
 	input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; }
 	textarea { width:100%; min-height:90px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
 	.proj { padding:8px 10px; border-radius:6px; cursor:pointer; margin-bottom:2px; }
-	.proj:hover { background:var(--bg); } .proj.on { background:#e8eefe; }
+	.proj:hover { background:var(--bg); } .proj.on { background:#e8edff; }
 	.proj small { color:var(--muted); display:block; }
 	.row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
 	.muted { color:var(--muted); font-size:12px; }
-	.turn { margin:18px 0 6px; color:var(--muted); font-size:12px; font-weight:600; letter-spacing:.04em; }
-	.msg { border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin:6px 0; background:var(--assistant); }
+	.phead { position:sticky; top:0; background:var(--bg); padding:12px 0 8px; z-index:3; border-bottom:1px solid var(--line); margin-bottom:6px; }
+	.seg { display:inline-flex; } .seg button { border-radius:0; margin-left:-1px; } .seg button:first-child { border-radius:6px 0 0 6px; } .seg button:last-child { border-radius:0 6px 6px 0; }
+	.selbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; background:var(--sel); border:1px solid #f0d86e; border-radius:8px; padding:6px 10px; margin-top:8px; }
+	.turn { margin:16px 0 6px; color:var(--muted); font-size:12px; font-weight:600; letter-spacing:.04em; display:flex; gap:8px; align-items:center; }
+	.turn button { padding:0 6px; font-size:11px; font-weight:400; }
+	.msg { border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin:6px 0; background:var(--assistant); display:grid; grid-template-columns:22px 1fr; column-gap:6px; }
 	.msg.user { background:var(--user); } .msg.system { background:var(--system); } .msg.tool { background:var(--tool); } .msg.note { background:var(--note); }
+	.msg.picked { outline:2px solid #e9c33b; background:var(--sel); }
+	.msg > input { margin-top:3px; width:15px; height:15px; cursor:pointer; }
 	.msg .hd { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--muted); }
 	.msg .hd .role { font-weight:700; color:var(--text); }
 	.msg .hd .acts { margin-left:auto; display:none; gap:4px; } .msg:hover .hd .acts { display:flex; }
 	.msg .hd .acts button { padding:1px 7px; font-size:12px; }
-	.msg pre { white-space:pre-wrap; word-break:break-word; margin:6px 0 0; font:inherit; }
+	.msg pre { white-space:pre-wrap; word-break:break-word; margin:6px 0 0; font:inherit; grid-column:2; }
 	.msg.code pre, .msg.json pre { font-family:ui-monospace,Menlo,monospace; font-size:12.5px; background:#0f172a0d; padding:8px; border-radius:6px; }
+	mark { background:#ffe066; border-radius:2px; }
 	.composer { position:fixed; bottom:0; left:280px; right:0; background:var(--card); border-top:1px solid var(--line); padding:10px 18px; }
 	.composer textarea { min-height:56px; }
-	dialog { border:1px solid var(--line); border-radius:10px; padding:16px; width:min(720px,94vw); }
+	dialog { border:1px solid var(--line); border-radius:10px; padding:16px; width:min(760px,94vw); }
 	dialog h3 { margin:0 0 10px; }
 	.empty { color:var(--muted); padding:60px 0; text-align:center; }
 	label { font-size:12px; color:var(--muted); }
+	table.spk { border-collapse:collapse; margin:8px 0; } table.spk td { padding:3px 6px; border-bottom:1px solid var(--line); font-size:13px; }
+	#login { position:fixed; inset:0; background:linear-gradient(135deg,#eef2ff,#f5f0ff); display:flex; align-items:center; justify-content:center; z-index:50; }
+	#login[hidden] { display:none; }
+	#login .box { background:#fff; border:1px solid var(--line); border-radius:14px; padding:28px; width:340px; text-align:center; box-shadow:0 10px 40px #4f6cf71a; }
+	#login img { width:72px; height:72px; } #login h2 { margin:10px 0 18px; font-size:18px; }
+	#login input { width:100%; padding:9px 10px; margin-bottom:10px; } #login button.primary { width:100%; padding:8px; }
+	#login .err { color:#d33; font-size:13px; min-height:18px; }
+	#login a { font-size:12px; color:var(--muted); cursor:pointer; }
 </style>
 </head>
 <body>
+<div id="login" hidden>
+	<form class="box" onsubmit="event.preventDefault(); doLogin()">
+		<img src="/logo.svg" alt=""><h2>Vibe Coding Logger</h2>
+		<div id="pwMode"><input type="password" id="pw" placeholder="管理员密码" autocomplete="current-password"></div>
+		<div id="tkMode" hidden><input id="tk" placeholder="API Token"></div>
+		<div class="err" id="loginErr"></div>
+		<button class="primary" type="submit">登录</button>
+		<p><a onclick="toggleTokenMode()" id="modeLink">使用 API Token 登录</a></p>
+	</form>
+</div>
+
 <header>
-	<b>Vibe Coding Logger</b><span class="muted" id="ver"></span>
+	<img src="/logo.svg" alt=""><b>Vibe Coding Logger</b><span class="muted" id="ver"></span>
 	<span class="sp"></span>
-	<input id="q" placeholder="全局搜索消息…" style="width:220px">
+	<input id="q" placeholder="跨项目搜索…" style="width:200px" onkeydown="if(event.key==='Enter')doSearch()">
 	<button onclick="doSearch()">搜索</button>
 	<button onclick="exportAll()">导出全部</button>
 	<button onclick="pick('#importAllFile')">导入备份</button>
 	<input type="file" id="importAllFile" accept=".json" hidden onchange="importAll(this)">
-	<a href="/api/openapi.json" target="_blank"><button>API</button></a>
-	<button onclick="setToken(true)">Token</button>
+	<button onclick="showApiToken()">API Token</button>
+	<a href="/api/openapi.json" target="_blank"><button>API 文档</button></a>
+	<button onclick="logout()">退出</button>
 </header>
 <main>
 	<aside>
 		<div class="row" style="margin-bottom:8px"><button class="primary" onclick="newProject()">+ 新项目</button>
-			<input id="pq" placeholder="筛选" style="flex:1;min-width:0" oninput="loadProjects()"></div>
+			<input id="pq" placeholder="筛选项目" style="flex:1;min-width:0" oninput="loadProjects()"></div>
 		<div id="projects"></div>
 	</aside>
 	<section id="main"><div class="empty">选择或新建一个项目</div></section>
@@ -69,7 +100,7 @@
 		<input id="cAuthor" placeholder="身份/模型，如 Claude Code" style="width:200px">
 		<select id="cFormat"><option>markdown</option><option>text</option><option>code</option><option>json</option></select>
 		<span class="muted">Ctrl+Enter 添加，添加后自动切换角色</span>
-		<span class="sp" style="flex:1"></span>
+		<span style="flex:1"></span>
 		<button class="primary" onclick="addMsg()">添加到末尾</button>
 	</div>
 	<textarea id="cText" placeholder="粘贴一条问题或回复…"></textarea>
@@ -79,84 +110,160 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const ROLE_CN = { user: "用户", assistant: "AI", system: "系统", tool: "工具", note: "备注" };
 let token = localStorage.getItem("vcl_token") || "";
-let cur = null, msgs = [], authors = {};
+let cur = null, msgs = [], authors = {}, view = { role: "", q: "" }, picked = new Set(), lastPick = null;
 
+/* ------------------------------- auth ------------------------------- */
 async function api(method, path, body, raw) {
 	const h = { authorization: "Bearer " + token };
 	if (body !== undefined && !raw) h["content-type"] = "application/json";
 	const r = await fetch(path, { method, headers: h, body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined) });
-	if (r.status === 401) { setToken(true); throw new Error("未授权"); }
+	if (r.status === 401 && !path.startsWith("/api/auth/login")) { showLogin(); throw new Error("未登录"); }
 	const j = r.status === 204 ? {} : await r.json();
 	if (!r.ok) { alert(j.message || r.status); throw new Error(j.message); }
 	return j;
 }
-function setToken(force) {
-	if (token && !force) return;
-	const t = prompt("API Token（服务器 API_TOKEN 或 data/api_token）", token);
-	if (t != null) { token = t.trim(); localStorage.setItem("vcl_token", token); loadProjects(); }
+let tokenMode = false;
+function showLogin() { $("#login").hidden = false; setTimeout(() => (tokenMode ? $("#tk") : $("#pw")).focus(), 50); }
+function toggleTokenMode() { tokenMode = !tokenMode; $("#pwMode").hidden = tokenMode; $("#tkMode").hidden = !tokenMode; $("#modeLink").textContent = tokenMode ? "使用管理员密码登录" : "使用 API Token 登录"; }
+async function doLogin() {
+	$("#loginErr").textContent = "";
+	if (tokenMode) token = $("#tk").value.trim();
+	else {
+		const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: $("#pw").value }) });
+		const j = await r.json();
+		if (!r.ok) { $("#loginErr").textContent = j.message; return; }
+		token = j.data.token;
+	}
+	const ok = await fetch("/api/auth/check", { headers: { authorization: "Bearer " + token } });
+	if (!ok.ok) { $("#loginErr").textContent = "Token 无效"; return; }
+	localStorage.setItem("vcl_token", token); $("#pw").value = ""; $("#login").hidden = true; loadProjects();
 }
+async function logout() { try { await api("POST", "/api/auth/logout"); } catch {} token = ""; localStorage.removeItem("vcl_token"); showLogin(); }
+async function showApiToken() {
+	const j = await api("GET", "/api/auth/api-token");
+	dialog(`<h3>API Token</h3><p class="muted">交给整理 AI 推送消息时使用：<code>Authorization: Bearer &lt;token&gt;</code></p>
+		<input readonly style="width:100%;font-family:monospace" value="${esc(j.data.token)}" onclick="this.select()">`, () => {});
+}
+
 const pick = (s) => $(s).click();
 const fmtTime = (t) => t ? new Date(t).toLocaleString() : "";
 
+/* ------------------------------ projects ------------------------------ */
 async function loadProjects() {
 	const q = $("#pq").value.trim();
 	const j = await api("GET", "/api/projects?limit=500&archived=all" + (q ? "&q=" + encodeURIComponent(q) : ""));
-	$("#projects").innerHTML = j.data.map((p) => `<div class="proj ${cur?.id === p.id ? "on" : ""}" onclick="openProject('${p.id}')">
+	$("#projects").innerHTML = j.data.map((p) => `<div class="proj ${cur?.id === p.id ? "on" : ""}" onclick="openProject('${p.id}', true)">
 		${esc(p.name)}${p.archived ? " <span class=muted>(归档)</span>" : ""}<small>${p.message_count} 条 · ${p.turn_count} 轮 ${p.tool ? "· " + esc(p.tool) : ""}</small></div>`).join("") || '<div class="muted">暂无项目</div>';
 }
 
-async function openProject(id) {
+async function openProject(id, fresh) {
+	if (fresh && cur?.id !== id) { view = { role: "", q: "" }; picked.clear(); }
 	cur = (await api("GET", "/api/projects/" + id)).data;
-	const j = await api("GET", `/api/projects/${id}/messages?limit=5000`);
-	msgs = j.data; authors = {};
-	for (const m of msgs) if (m.author) authors[m.role] = m.author;
-	const last = msgs[msgs.length - 1];
-	$("#cRole").value = last ? nextRole(last.role === "user" ? "user" : "assistant") : "user";
+	const all = (await api("GET", `/api/projects/${id}/messages?limit=5000`)).data;
+	authors = {}; for (const m of all) if (m.author) authors[m.role] = m.author;
+	const last = all[all.length - 1];
+	$("#cRole").value = last ? (last.role === "user" ? "assistant" : "user") : "user";
 	$("#cAuthor").value = authors[$("#cRole").value] || "";
+	const filtered = view.role || view.q;
+	msgs = filtered ? (await api("GET", `/api/projects/${id}/messages?limit=5000${view.role ? "&role=" + view.role : ""}${view.q ? "&q=" + encodeURIComponent(view.q) : ""}`)).data : all;
+	for (const pid of [...picked]) if (!all.some((m) => m.id === pid)) picked.delete(pid);
 	render(); loadProjects(); $("#composer").hidden = false;
 }
 
-function render() {
-	const p = cur;
-	let html = `<div class="row" style="justify-content:space-between">
-		<div><h2 style="margin:0">${esc(p.name)}</h2><div class="muted">${esc(p.slug)} · ${p.tool ? esc(p.tool) + " · " : ""}${p.model ? esc(p.model) + " · " : ""}${p.message_count} 条消息 · ${p.turn_count} 轮 · ID ${p.id}</div>
-		${p.description ? `<p style="white-space:pre-wrap;margin:6px 0">${esc(p.description)}</p>` : ""}</div>
-		<div class="row"><button onclick="editProject()">编辑项目</button>
-		<button onclick="exportProject('md')">导出 MD</button><button onclick="exportProject('json')">JSON</button><button onclick="exportProject('jsonl')">JSONL</button>
-		<button onclick="importDialog()">导入到此项目</button><button onclick="bulkDialog()">批量改身份</button>
-		<button class="danger" onclick="delProject()">删除</button></div></div>`;
-	if (!msgs.length) html += '<div class="empty">还没有消息，在下方添加，或「导入到此项目」</div>';
-	let turn = -1;
-	for (const m of msgs) {
-		if (m.turn !== turn) { turn = m.turn; html += `<div class="turn">${turn === 0 ? "开场" : "第 " + turn + " 轮"}</div>`; }
-		html += `<div class="msg ${m.role} ${m.format}" id="m-${m.id}"><div class="hd"><span>#${m.seq}</span><span class="role">${ROLE_CN[m.role] || m.role}</span>
-			${m.author ? `<span>${esc(m.author)}</span>` : ""}<span>${fmtTime(m.sent_at)}</span>
-			<span class="acts"><button onclick="editMsg('${m.id}')">编辑</button><button onclick="insertAfter('${m.id}')">在后插入</button>
-			<button onclick="move('${m.id}',-1)">↑</button><button onclick="move('${m.id}',1)">↓</button><button class="danger" onclick="delMsg('${m.id}')">删除</button></span></div>
-			<pre>${esc(m.content)}</pre></div>`;
-	}
-	$("#main").innerHTML = html;
+function hl(text) {
+	const t = esc(text); if (!view.q) return t;
+	const q = esc(view.q).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return t.replace(new RegExp(q, "gi"), (m) => `<mark>${m}</mark>`);
 }
 
+function render() {
+	const p = cur, sc = $("#main").scrollTop;
+	const seg = [["", "全部"], ["user", "只看用户问题"], ["assistant", "只看 AI 回复"]].map(([r, l]) => `<button type="button" class="${view.role === r ? "on" : ""}" onclick="setRole('${r}')">${l}</button>`).join("");
+	let html = `<div class="phead"><div class="row" style="justify-content:space-between">
+		<div><h2 style="margin:0;font-size:18px">${esc(p.name)}</h2><div class="muted">${p.tool ? esc(p.tool) + " · " : ""}${p.model ? esc(p.model) + " · " : ""}${p.message_count} 条消息 · ${p.turn_count} 轮 · ${p.id}</div></div>
+		<div class="row"><button onclick="editProject()">编辑项目</button>
+		<button onclick="exportProject('md')">导出 MD</button><button onclick="exportProject('json')">JSON</button><button onclick="exportProject('jsonl')">JSONL</button>
+		<button onclick="importDialog()">导入</button><button onclick="bulkDialog()">按条件改身份</button>
+		<button class="danger" onclick="delProject()">删除</button></div></div>
+		<div class="row" style="margin-top:8px"><span class="seg">${seg}</span>
+		<input id="pSearch" placeholder="在本项目中搜索（内容/身份）" value="${esc(view.q)}" style="width:260px" onkeydown="if(event.key==='Enter')setQ(this.value)">
+		<button type="button" onclick="setQ($('#pSearch').value)">搜索</button>${view.q ? `<button type="button" onclick="setQ('')">清除</button>` : ""}
+		<span class="muted">${view.role || view.q ? `匹配 ${msgs.length} 条` : ""}</span>
+		<span style="flex:1"></span><button type="button" onclick="pickAll()">全选当前</button></div>
+		${picked.size ? `<div class="selbar"><b>已选 ${picked.size} 条</b>
+			<select id="sRole"><option value="">角色不变</option>${Object.entries(ROLE_CN).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+			<input id="sAuthor" list="authorList" placeholder="新身份（留空不改）" style="width:180px">
+			<datalist id="authorList">${[...new Set(Object.values(authors))].map((a) => `<option value="${esc(a)}">`).join("")}</datalist>
+			<label><input type="checkbox" id="sClear"> 清空身份</label>
+			<button class="primary" type="button" onclick="applyPicked()">应用到所选</button>
+			<button class="danger" type="button" onclick="deletePicked()">删除所选</button>
+			<button type="button" onclick="clearPicked()">取消选择</button><span class="muted">按住 Shift 可连选</span></div>` : ""}
+		</div>`;
+	if (!msgs.length) html += `<div class="empty">${view.role || view.q ? "没有匹配的消息" : "还没有消息，在下方添加，或点「导入」"}</div>`;
+	let turn = -1;
+	for (const m of msgs) {
+		if (m.turn !== turn) { turn = m.turn; html += `<div class="turn">${turn === 0 ? "开场" : "第 " + turn + " 轮"}<button type="button" onclick="pickTurn(${turn})">选中本轮</button></div>`; }
+		html += `<div class="msg ${m.role} ${m.format} ${picked.has(m.id) ? "picked" : ""}" id="m-${m.id}">
+			<input type="checkbox" ${picked.has(m.id) ? "checked" : ""} onclick="togglePick(event,'${m.id}')">
+			<div><div class="hd"><span>#${m.seq}</span><span class="role">${ROLE_CN[m.role] || m.role}</span>
+			${m.author ? `<span>${hl(m.author)}</span>` : ""}<span>${fmtTime(m.sent_at)}</span>
+			<span class="acts">${view.role || view.q ? `<button onclick="jumpTo('${m.id}')">定位</button>` : ""}<button onclick="editMsg('${m.id}')">编辑</button><button onclick="insertAfter('${m.id}')">在后插入</button>
+			<button onclick="move('${m.id}',-1)">↑</button><button onclick="move('${m.id}',1)">↓</button><button class="danger" onclick="delMsg('${m.id}')">删除</button></span></div>
+			<pre>${hl(m.content)}</pre></div></div>`;
+	}
+	$("#main").innerHTML = html; $("#main").scrollTop = sc;
+}
+function setRole(r) { view.role = r; openProject(cur.id); }
+function setQ(q) { view.q = q.trim(); openProject(cur.id); }
+async function jumpTo(id) { view = { role: "", q: "" }; await openProject(cur.id); const el = document.getElementById("m-" + id); el?.scrollIntoView({ block: "center" }); el?.animate([{ background: "#ffe066" }, {}], 1500); }
+
+/* ------------------------------ selection ------------------------------ */
+function togglePick(e, id) {
+	const ids = msgs.map((m) => m.id);
+	if (e.shiftKey && lastPick && ids.includes(lastPick)) {
+		const [a, b] = [ids.indexOf(lastPick), ids.indexOf(id)].sort((x, y) => x - y);
+		const on = !picked.has(id) || e.target.checked;
+		for (const x of ids.slice(a, b + 1)) on ? picked.add(x) : picked.delete(x);
+	} else picked.has(id) ? picked.delete(id) : picked.add(id);
+	lastPick = id; render();
+}
+function pickAll() { const all = msgs.every((m) => picked.has(m.id)); for (const m of msgs) all ? picked.delete(m.id) : picked.add(m.id); render(); }
+function pickTurn(t) { for (const m of msgs) if (m.turn === t) picked.add(m.id); render(); }
+function clearPicked() { picked.clear(); render(); }
+async function applyPicked() {
+	const set = {};
+	if ($("#sRole").value) set.role = $("#sRole").value;
+	if ($("#sClear").checked) set.author = null; else if ($("#sAuthor").value.trim()) set.author = $("#sAuthor").value.trim();
+	if (!Object.keys(set).length) return alert("请选择新角色或填写新身份");
+	const j = await api("POST", `/api/projects/${cur.id}/messages/bulk-update`, { ids: [...picked], set });
+	picked.clear(); await openProject(cur.id); toast(`已修改 ${j.data.updated} 条`);
+}
+async function deletePicked() {
+	if (!confirm(`删除所选 ${picked.size} 条消息？`)) return;
+	const j = await api("POST", `/api/projects/${cur.id}/messages/delete`, { ids: [...picked] });
+	picked.clear(); await openProject(cur.id); toast(`已删除 ${j.data.deleted} 条`);
+}
+function toast(t) { const d = Object.assign(document.createElement("div"), { textContent: t }); d.style.cssText = "position:fixed;top:64px;left:50%;transform:translateX(-50%);background:#1d2330;color:#fff;padding:6px 14px;border-radius:6px;z-index:60"; document.body.append(d); setTimeout(() => d.remove(), 1800); }
+
+/* ------------------------------ messages ------------------------------ */
 function nextRole(r) { return r === "user" ? "assistant" : "user"; }
-async function addMsg(afterId) {
+async function addMsg() {
 	const content = $("#cText").value; if (!content.trim()) return;
 	const role = $("#cRole").value;
-	const body = { role, author: $("#cAuthor").value.trim() || null, content, format: $("#cFormat").value };
-	if (afterId) body.after_id = afterId;
-	await api("POST", `/api/projects/${cur.id}/messages`, body);
-	$("#cText").value = ""; $("#cRole").value = nextRole(role); $("#cAuthor").value = authors[$("#cRole").value] || "";
-	await openProject(cur.id); $("#main").scrollTop = 1e9;
+	await api("POST", `/api/projects/${cur.id}/messages`, { role, author: $("#cAuthor").value.trim() || null, content, format: $("#cFormat").value });
+	$("#cText").value = ""; view = { role: "", q: "" };
+	await openProject(cur.id); $("#cRole").value = nextRole(role); $("#cAuthor").value = authors[$("#cRole").value] || ""; $("#main").scrollTop = 1e9;
 }
 $("#cText").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addMsg(); });
 $("#cRole").addEventListener("change", () => { $("#cAuthor").value = authors[$("#cRole").value] || ""; });
 
 function dialog(html, onOk) {
 	$("#dlgBody").innerHTML = html + `<div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel">取消</button><button class="primary" value="ok" id="dlgOk">确定</button></div>`;
-	const d = $("#dlg"); d.showModal();
+	const d = $("#dlg"); d.returnValue = ""; d.showModal();
 	d.onclose = async () => { if (d.returnValue === "ok") try { await onOk(); } catch (e) { console.error(e); } };
 }
 const roleOpts = (sel) => Object.entries(ROLE_CN).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${v} (${k})</option>`).join("");
@@ -181,10 +288,10 @@ function insertAfter(id) {
 }
 async function move(id, d) {
 	const m = msgs.find((x) => x.id === id);
-	const pos = m.seq + d; if (pos < 1 || pos > msgs.length) return;
+	const pos = m.seq + d; if (pos < 1 || pos > cur.message_count) return;
 	await api("POST", `/api/messages/${id}/move`, { position: pos }); openProject(cur.id);
 }
-async function delMsg(id) { if (!confirm("删除这条消息？")) return; await api("DELETE", "/api/messages/" + id); openProject(cur.id); }
+async function delMsg(id) { if (!confirm("删除这条消息？")) return; await api("DELETE", "/api/messages/" + id); picked.delete(id); openProject(cur.id); }
 
 function projectForm(p = {}) {
 	return `<label>名称</label><input id="pName" style="width:100%" value="${esc(p.name)}">
@@ -196,13 +303,14 @@ function projectForm(p = {}) {
 }
 const projectBody = () => ({ name: $("#pName").value.trim(), tool: $("#pTool").value.trim() || null, model: $("#pModel").value.trim() || null,
 	tags: $("#pTags").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean), description: $("#pDesc").value || null, ...($("#pArch") ? { archived: $("#pArch").checked } : {}) });
-function newProject() { dialog("<h3>新项目</h3>" + projectForm(), async () => { const j = await api("POST", "/api/projects", projectBody()); openProject(j.data.id); }); }
+function newProject() { dialog("<h3>新项目</h3>" + projectForm(), async () => { const j = await api("POST", "/api/projects", projectBody()); openProject(j.data.id, true); }); }
 function editProject() { dialog("<h3>编辑项目</h3>" + projectForm(cur), async () => { await api("PATCH", "/api/projects/" + cur.id, projectBody()); openProject(cur.id); }); }
 async function delProject() {
 	if (prompt(`删除项目「${cur.name}」及其全部 ${cur.message_count} 条消息？输入项目名确认`) !== cur.name) return;
 	await api("DELETE", "/api/projects/" + cur.id); cur = null; $("#composer").hidden = true; $("#main").innerHTML = '<div class="empty">已删除</div>'; loadProjects();
 }
 
+/* --------------------------- import / export --------------------------- */
 async function download(path) {
 	const r = await fetch(path, { headers: { authorization: "Bearer " + token } });
 	if (!r.ok) return alert("导出失败 " + r.status);
@@ -220,20 +328,39 @@ async function importAll(input) {
 }
 function importDialog() {
 	dialog(`<h3>导入到「${esc(cur.name)}」（追加到末尾）</h3>
-		<div class="row"><select id="imFmt"><option value="">自动识别</option><option value="text">纯文本（用户: / AI: 开头分段）</option><option value="json">JSON 数组</option><option value="jsonl">JSONL</option><option value="md">本系统导出的 Markdown</option></select>
-		<input id="imSpk" placeholder="自定义说话人，如 Kiro=assistant,老王=user" style="flex:1"><input type="file" id="imFile"></div>
-		<textarea id="imText" style="min-height:280px;margin-top:8px" placeholder="或直接粘贴内容"></textarea>
-		<div class="muted" id="imPrev"></div><button type="button" onclick="previewImport()">预览</button>`,
-		async () => { const j = await api("POST", importUrl(false), undefined, await importText()); alert(`导入 ${j.data.created} 条，跳过 ${j.data.skipped} 条`); openProject(cur.id); });
+		<div class="row"><select id="imFmt" onchange="$('#spkBox').hidden=this.value!=='text'"><option value="text">对话文本（说话人: 开头）</option><option value="">自动识别</option><option value="json">JSON 数组</option><option value="jsonl">JSONL</option><option value="md">本系统导出的 Markdown</option></select>
+		<input type="file" id="imFile" onchange="this.files[0]&&this.files[0].text().then(t=>{$('#imText').value=t;detectSpk()})"></div>
+		<textarea id="imText" style="min-height:220px;margin-top:8px" placeholder="粘贴记录，例如：&#10;A：帮我部署 nginx&#10;B：好的，先检查端口&#10;B：端口 80 已占用…" onpaste="setTimeout(detectSpk,0)"></textarea>
+		<div id="spkBox"><div class="row"><b style="font-size:13px">说话人映射</b><input id="imSpk" placeholder="A=AI, B=user, C=assistant/Claude Code" style="flex:1">
+			<button type="button" onclick="detectSpk()">识别说话人</button></div>
+			<div class="muted">格式：名字=角色[/身份]，角色可写 user / AI / 用户 / tool / system / note。填了映射就只按这些名字分段；留空则按 用户:/我:/AI:/Claude: 等常见名字。</div>
+			<div id="spkTable"></div></div>
+		<button type="button" onclick="previewImport()">预览</button><div class="muted" id="imPrev" style="max-height:220px;overflow:auto;margin-top:6px"></div>`,
+		async () => { const j = await api("POST", importUrl(false), undefined, $("#imText").value); toast(`导入 ${j.data.created} 条，跳过 ${j.data.skipped} 条`); openProject(cur.id); });
 }
-const importText = async () => $("#imFile").files[0] ? await $("#imFile").files[0].text() : $("#imText").value;
-const importUrl = (dry) => `/api/projects/${cur.id}/import?format=${$("#imFmt").value}&speakers=${encodeURIComponent($("#imSpk").value)}${dry ? "&dry_run=1" : ""}`;
+const importUrl = (dry) => `/api/projects/${cur.id}/import?format=${$("#imFmt").value}${$("#imFmt").value === "text" && $("#imSpk").value.trim() ? "&speakers=" + encodeURIComponent($("#imSpk").value.trim()) : ""}${dry ? "&dry_run=1" : ""}`;
+async function detectSpk() {
+	if ($("#imFmt").value !== "text" || !$("#imText").value.trim()) return;
+	const j = await api("POST", "/api/tools/detect-speakers", undefined, $("#imText").value);
+	if (!j.data.length) { $("#spkTable").innerHTML = '<div class="muted">没发现「名字:」开头的行</div>'; return; }
+	$("#spkTable").innerHTML = `<table class="spk"><tr><td class="muted">名字</td><td class="muted">出现</td><td class="muted">角色</td><td class="muted">身份（可选）</td><td class="muted">示例</td></tr>` +
+		j.data.map((s, i) => `<tr><td><b>${esc(s.name)}</b></td><td>${s.count}</td>
+		<td><select data-spk="${esc(s.name)}" onchange="buildSpk()"><option value="">不是说话人</option>${Object.entries(ROLE_CN).map(([k, v]) => `<option value="${k}" ${(s.suggested_role || (j.data.length <= 3 ? "" : "")) === k ? "selected" : ""}>${v}</option>`).join("")}</select></td>
+		<td><input data-auth="${esc(s.name)}" style="width:130px" oninput="buildSpk()"></td><td class="muted">${esc(s.sample)}</td></tr>`).join("") + "</table>";
+	buildSpk();
+}
+function buildSpk() {
+	$("#imSpk").value = $$("select[data-spk]").filter((s) => s.value).map((s) => {
+		const a = $$("input[data-auth]").find((x) => x.dataset.auth === s.dataset.spk)?.value.trim();
+		return `${s.dataset.spk}=${s.value}${a ? "/" + a : ""}`;
+	}).join(", ");
+}
 async function previewImport() {
-	const j = await api("POST", importUrl(true), undefined, await importText());
-	$("#imPrev").innerHTML = `识别为 ${j.data.format}，共 ${j.data.count} 条：<br>` + j.data.preview.map((m, i) => `${i + 1}. [${m.role}${m.author ? "/" + esc(m.author) : ""}] ${esc(m.content.slice(0, 60))}`).join("<br>");
+	const j = await api("POST", importUrl(true), undefined, $("#imText").value);
+	$("#imPrev").innerHTML = `识别为 ${j.data.format}，共 ${j.data.count} 条：<br>` + j.data.preview.map((m, i) => `${i + 1}. [${ROLE_CN[m.role]}${m.author ? "/" + esc(m.author) : ""}] ${esc(m.content.slice(0, 70))}`).join("<br>");
 }
 function bulkDialog() {
-	dialog(`<h3>批量修改身份</h3><p class="muted">把匹配的消息统一改成新的角色/身份（留空表示不限/不改）</p>
+	dialog(`<h3>按条件批量改身份</h3><p class="muted">把匹配的消息统一改成新的角色/身份（留空表示不限/不改）。只改部分消息请直接勾选。</p>
 		<div class="row"><b>匹配</b><select id="bR"><option value="">任意角色</option>${roleOpts("")}</select><input id="bA" placeholder="当前身份（精确匹配）"></div>
 		<div class="row" style="margin-top:6px"><b>改为</b><select id="bR2"><option value="">不改角色</option>${roleOpts("")}</select><input id="bA2" placeholder="新身份"></div>`,
 		async () => {
@@ -241,19 +368,19 @@ function bulkDialog() {
 			if ($("#bR").value) filter.role = $("#bR").value; if ($("#bA").value) filter.author = $("#bA").value;
 			if ($("#bR2").value) set.role = $("#bR2").value; if ($("#bA2").value) set.author = $("#bA2").value;
 			const j = await api("POST", `/api/projects/${cur.id}/messages/bulk-update`, { filter, set, all: !Object.keys(filter).length });
-			alert(`已更新 ${j.data.updated} 条`); openProject(cur.id);
+			toast(`已更新 ${j.data.updated} 条`); openProject(cur.id);
 		});
 }
 async function doSearch() {
 	const q = $("#q").value.trim(); if (!q) return;
 	const j = await api("GET", "/api/search?q=" + encodeURIComponent(q));
 	cur = null; $("#composer").hidden = true;
-	$("#main").innerHTML = `<h3>搜索「${esc(q)}」：${j.data.length} 条</h3>` + j.data.map((m) => `<div class="msg ${m.role}" style="cursor:pointer" onclick="openProject('${m.project_id}').then(()=>document.getElementById('m-${m.id}')?.scrollIntoView())">
+	$("#main").innerHTML = `<h3>搜索「${esc(q)}」：${j.data.length} 条</h3>` + j.data.map((m) => `<div class="msg ${m.role}" style="cursor:pointer;display:block" onclick="openProject('${m.project_id}', true).then(()=>jumpTo('${m.id}'))">
 		<div class="hd"><span class="role">${esc(m.project_name)}</span><span>#${m.seq} ${ROLE_CN[m.role]}</span>${m.author ? `<span>${esc(m.author)}</span>` : ""}</div><pre>${esc(m.snippet)}</pre></div>`).join("");
 }
 
-fetch("/api/health").then((r) => r.json()).then((j) => { $("#ver").textContent = "v" + j.data.version; });
-if (!token) setToken(); else loadProjects();
+fetch("/api/health").then((r) => r.json()).then((j) => { $("#ver").textContent = "v" + j.data.version; if (!j.data.password_login && !tokenMode) toggleTokenMode(); });
+if (!token) showLogin(); else fetch("/api/auth/check", { headers: { authorization: "Bearer " + token } }).then((r) => r.ok ? loadProjects() : showLogin());
 </script>
 </body>
 </html>

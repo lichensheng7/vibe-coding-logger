@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F7BFF"/>
+      <stop offset="1" stop-color="#7B4DFF"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3D63F0"/>
+      <stop offset="1" stop-color="#6E3FF2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <!-- chat bubble -->
+  <path d="M120 128h272a40 40 0 0 1 40 40v152a40 40 0 0 1-40 40H230l-68 54a8 8 0 0 1-13-6.3V360h-29a40 40 0 0 1-40-40V168a40 40 0 0 1 40-40z" fill="#fff"/>
+  <!-- prompt chevron -->
+  <path d="M146 196l46 36-46 36" fill="none" stroke="url(#ink)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- log lines -->
+  <rect x="222" y="190" width="150" height="24" rx="12" fill="url(#ink)"/>
+  <rect x="222" y="248" width="104" height="24" rx="12" fill="url(#ink)" opacity=".55"/>
+  <rect x="146" y="300" width="180" height="24" rx="12" fill="url(#ink)" opacity=".3"/>
+  <!-- vibe sparkle -->
+  <path d="M404 64c5 30 14 39 44 44-30 5-39 14-44 44-5-30-14-39-44-44 30-5 39-14 44-44z" fill="#FFD84D"/>
+</svg>

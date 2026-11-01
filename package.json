@@ -1,6 +1,6 @@
 {
   "name": "vibe-coding-logger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-hosted log for vibe-coding chats: projects, ordered messages, editable roles, REST API, import/export, Docker.",
   "type": "module",
   "license": "MIT",
