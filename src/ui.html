@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vibe Coding Logger</title>
+<style>
+	:root { --bg:#f6f7f9; --card:#fff; --line:#e3e6eb; --text:#1d2330; --muted:#6b7385; --accent:#3b6cf6;
+		--user:#eef3ff; --assistant:#fff; --system:#f4f4f5; --tool:#f2fbf4; --note:#fffaf0; }
+	* { box-sizing: border-box; }
+	body { margin:0; font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+	header { display:flex; gap:10px; align-items:center; padding:10px 16px; background:var(--card); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+	header b { font-size:15px; } header .sp { flex:1; }
+	main { display:grid; grid-template-columns:280px 1fr; height:calc(100vh - 51px); }
+	aside { border-right:1px solid var(--line); background:var(--card); overflow:auto; padding:10px; }
+	section { overflow:auto; padding:14px 18px 120px; }
+	button, select, input, textarea { font:inherit; }
+	button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; }
+	button:hover { border-color:var(--accent); color:var(--accent); }
+	button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+	button.danger:hover { border-color:#d33; color:#d33; }
+	input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:5px 8px; background:#fff; }
+	textarea { width:100%; min-height:90px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+	.proj { padding:8px 10px; border-radius:6px; cursor:pointer; margin-bottom:2px; }
+	.proj:hover { background:var(--bg); } .proj.on { background:#e8eefe; }
+	.proj small { color:var(--muted); display:block; }
+	.row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+	.muted { color:var(--muted); font-size:12px; }
+	.turn { margin:18px 0 6px; color:var(--muted); font-size:12px; font-weight:600; letter-spacing:.04em; }
+	.msg { border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin:6px 0; background:var(--assistant); }
+	.msg.user { background:var(--user); } .msg.system { background:var(--system); } .msg.tool { background:var(--tool); } .msg.note { background:var(--note); }
+	.msg .hd { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--muted); }
+	.msg .hd .role { font-weight:700; color:var(--text); }
+	.msg .hd .acts { margin-left:auto; display:none; gap:4px; } .msg:hover .hd .acts { display:flex; }
+	.msg .hd .acts button { padding:1px 7px; font-size:12px; }
+	.msg pre { white-space:pre-wrap; word-break:break-word; margin:6px 0 0; font:inherit; }
+	.msg.code pre, .msg.json pre { font-family:ui-monospace,Menlo,monospace; font-size:12.5px; background:#0f172a0d; padding:8px; border-radius:6px; }
+	.composer { position:fixed; bottom:0; left:280px; right:0; background:var(--card); border-top:1px solid var(--line); padding:10px 18px; }
+	.composer textarea { min-height:56px; }
+	dialog { border:1px solid var(--line); border-radius:10px; padding:16px; width:min(720px,94vw); }
+	dialog h3 { margin:0 0 10px; }
+	.empty { color:var(--muted); padding:60px 0; text-align:center; }
+	label { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+	<b>Vibe Coding Logger</b><span class="muted" id="ver"></span>
+	<span class="sp"></span>
+	<input id="q" placeholder="全局搜索消息…" style="width:220px">
+	<button onclick="doSearch()">搜索</button>
+	<button onclick="exportAll()">导出全部</button>
+	<button onclick="pick('#importAllFile')">导入备份</button>
+	<input type="file" id="importAllFile" accept=".json" hidden onchange="importAll(this)">
+	<a href="/api/openapi.json" target="_blank"><button>API</button></a>
+	<button onclick="setToken(true)">Token</button>
+</header>
+<main>
+	<aside>
+		<div class="row" style="margin-bottom:8px"><button class="primary" onclick="newProject()">+ 新项目</button>
+			<input id="pq" placeholder="筛选" style="flex:1;min-width:0" oninput="loadProjects()"></div>
+		<div id="projects"></div>
+	</aside>
+	<section id="main"><div class="empty">选择或新建一个项目</div></section>
+</main>
+<div class="composer" id="composer" hidden>
+	<div class="row" style="margin-bottom:6px">
+		<select id="cRole"><option value="user">用户</option><option value="assistant">AI</option><option value="tool">工具</option><option value="system">系统</option><option value="note">备注</option></select>
+		<input id="cAuthor" placeholder="身份/模型，如 Claude Code" style="width:200px">
+		<select id="cFormat"><option>markdown</option><option>text</option><option>code</option><option>json</option></select>
+		<span class="muted">Ctrl+Enter 添加，添加后自动切换角色</span>
+		<span class="sp" style="flex:1"></span>
+		<button class="primary" onclick="addMsg()">添加到末尾</button>
+	</div>
+	<textarea id="cText" placeholder="粘贴一条问题或回复…"></textarea>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="dlgBody"></form></dialog>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ROLE_CN = { user: "用户", assistant: "AI", system: "系统", tool: "工具", note: "备注" };
+let token = localStorage.getItem("vcl_token") || "";
+let cur = null, msgs = [], authors = {};
+
+async function api(method, path, body, raw) {
+	const h = { authorization: "Bearer " + token };
+	if (body !== undefined && !raw) h["content-type"] = "application/json";
+	const r = await fetch(path, { method, headers: h, body: raw ?? (body !== undefined ? JSON.stringify(body) : undefined) });
+	if (r.status === 401) { setToken(true); throw new Error("未授权"); }
+	const j = r.status === 204 ? {} : await r.json();
+	if (!r.ok) { alert(j.message || r.status); throw new Error(j.message); }
+	return j;
+}
+function setToken(force) {
+	if (token && !force) return;
+	const t = prompt("API Token（服务器 API_TOKEN 或 data/api_token）", token);
+	if (t != null) { token = t.trim(); localStorage.setItem("vcl_token", token); loadProjects(); }
+}
+const pick = (s) => $(s).click();
+const fmtTime = (t) => t ? new Date(t).toLocaleString() : "";
+
+async function loadProjects() {
+	const q = $("#pq").value.trim();
+	const j = await api("GET", "/api/projects?limit=500&archived=all" + (q ? "&q=" + encodeURIComponent(q) : ""));
+	$("#projects").innerHTML = j.data.map((p) => `<div class="proj ${cur?.id === p.id ? "on" : ""}" onclick="openProject('${p.id}')">
+		${esc(p.name)}${p.archived ? " <span class=muted>(归档)</span>" : ""}<small>${p.message_count} 条 · ${p.turn_count} 轮 ${p.tool ? "· " + esc(p.tool) : ""}</small></div>`).join("") || '<div class="muted">暂无项目</div>';
+}
+
+async function openProject(id) {
+	cur = (await api("GET", "/api/projects/" + id)).data;
+	const j = await api("GET", `/api/projects/${id}/messages?limit=5000`);
+	msgs = j.data; authors = {};
+	for (const m of msgs) if (m.author) authors[m.role] = m.author;
+	const last = msgs[msgs.length - 1];
+	$("#cRole").value = last ? nextRole(last.role === "user" ? "user" : "assistant") : "user";
+	$("#cAuthor").value = authors[$("#cRole").value] || "";
+	render(); loadProjects(); $("#composer").hidden = false;
+}
+
+function render() {
+	const p = cur;
+	let html = `<div class="row" style="justify-content:space-between">
+		<div><h2 style="margin:0">${esc(p.name)}</h2><div class="muted">${esc(p.slug)} · ${p.tool ? esc(p.tool) + " · " : ""}${p.model ? esc(p.model) + " · " : ""}${p.message_count} 条消息 · ${p.turn_count} 轮 · ID ${p.id}</div>
+		${p.description ? `<p style="white-space:pre-wrap;margin:6px 0">${esc(p.description)}</p>` : ""}</div>
+		<div class="row"><button onclick="editProject()">编辑项目</button>
+		<button onclick="exportProject('md')">导出 MD</button><button onclick="exportProject('json')">JSON</button><button onclick="exportProject('jsonl')">JSONL</button>
+		<button onclick="importDialog()">导入到此项目</button><button onclick="bulkDialog()">批量改身份</button>
+		<button class="danger" onclick="delProject()">删除</button></div></div>`;
+	if (!msgs.length) html += '<div class="empty">还没有消息，在下方添加，或「导入到此项目」</div>';
+	let turn = -1;
+	for (const m of msgs) {
+		if (m.turn !== turn) { turn = m.turn; html += `<div class="turn">${turn === 0 ? "开场" : "第 " + turn + " 轮"}</div>`; }
+		html += `<div class="msg ${m.role} ${m.format}" id="m-${m.id}"><div class="hd"><span>#${m.seq}</span><span class="role">${ROLE_CN[m.role] || m.role}</span>
+			${m.author ? `<span>${esc(m.author)}</span>` : ""}<span>${fmtTime(m.sent_at)}</span>
+			<span class="acts"><button onclick="editMsg('${m.id}')">编辑</button><button onclick="insertAfter('${m.id}')">在后插入</button>
+			<button onclick="move('${m.id}',-1)">↑</button><button onclick="move('${m.id}',1)">↓</button><button class="danger" onclick="delMsg('${m.id}')">删除</button></span></div>
+			<pre>${esc(m.content)}</pre></div>`;
+	}
+	$("#main").innerHTML = html;
+}
+
+function nextRole(r) { return r === "user" ? "assistant" : "user"; }
+async function addMsg(afterId) {
+	const content = $("#cText").value; if (!content.trim()) return;
+	const role = $("#cRole").value;
+	const body = { role, author: $("#cAuthor").value.trim() || null, content, format: $("#cFormat").value };
+	if (afterId) body.after_id = afterId;
+	await api("POST", `/api/projects/${cur.id}/messages`, body);
+	$("#cText").value = ""; $("#cRole").value = nextRole(role); $("#cAuthor").value = authors[$("#cRole").value] || "";
+	await openProject(cur.id); $("#main").scrollTop = 1e9;
+}
+$("#cText").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) addMsg(); });
+$("#cRole").addEventListener("change", () => { $("#cAuthor").value = authors[$("#cRole").value] || ""; });
+
+function dialog(html, onOk) {
+	$("#dlgBody").innerHTML = html + `<div class="row" style="justify-content:flex-end;margin-top:12px"><button value="cancel">取消</button><button class="primary" value="ok" id="dlgOk">确定</button></div>`;
+	const d = $("#dlg"); d.showModal();
+	d.onclose = async () => { if (d.returnValue === "ok") try { await onOk(); } catch (e) { console.error(e); } };
+}
+const roleOpts = (sel) => Object.entries(ROLE_CN).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${v} (${k})</option>`).join("");
+
+function editMsg(id) {
+	const m = msgs.find((x) => x.id === id);
+	dialog(`<h3>编辑 #${m.seq}</h3><div class="row"><select id="eRole">${roleOpts(m.role)}</select>
+		<input id="eAuthor" value="${esc(m.author)}" placeholder="身份/模型"><select id="eFormat">${["markdown","text","code","json"].map((f) => `<option ${f === m.format ? "selected" : ""}>${f}</option>`).join("")}</select>
+		<label>位置 <input id="ePos" type="number" min="1" value="${m.seq}" style="width:70px"></label></div>
+		<textarea id="eText" style="min-height:320px;margin-top:8px">${esc(m.content)}</textarea>`,
+		async () => {
+			const b = { role: $("#eRole").value, author: $("#eAuthor").value.trim() || null, format: $("#eFormat").value, content: $("#eText").value };
+			if (Number($("#ePos").value) !== m.seq) b.position = Number($("#ePos").value);
+			await api("PATCH", "/api/messages/" + id, b); openProject(cur.id);
+		});
+}
+function insertAfter(id) {
+	const m = msgs.find((x) => x.id === id);
+	dialog(`<h3>在 #${m.seq} 之后插入</h3><div class="row"><select id="iRole">${roleOpts(nextRole(m.role))}</select><input id="iAuthor" placeholder="身份/模型" value="${esc(authors[nextRole(m.role)] || "")}"></div>
+		<textarea id="iText" style="min-height:240px;margin-top:8px"></textarea>`,
+		async () => { await api("POST", `/api/projects/${cur.id}/messages`, { after_id: id, role: $("#iRole").value, author: $("#iAuthor").value.trim() || null, content: $("#iText").value }); openProject(cur.id); });
+}
+async function move(id, d) {
+	const m = msgs.find((x) => x.id === id);
+	const pos = m.seq + d; if (pos < 1 || pos > msgs.length) return;
+	await api("POST", `/api/messages/${id}/move`, { position: pos }); openProject(cur.id);
+}
+async function delMsg(id) { if (!confirm("删除这条消息？")) return; await api("DELETE", "/api/messages/" + id); openProject(cur.id); }
+
+function projectForm(p = {}) {
+	return `<label>名称</label><input id="pName" style="width:100%" value="${esc(p.name)}">
+		<div class="row" style="margin-top:6px"><div style="flex:1"><label>工具</label><input id="pTool" style="width:100%" value="${esc(p.tool)}" placeholder="Cursor / Claude Code / ChatGPT"></div>
+		<div style="flex:1"><label>模型</label><input id="pModel" style="width:100%" value="${esc(p.model)}"></div></div>
+		<label>标签（逗号分隔）</label><input id="pTags" style="width:100%" value="${esc((p.tags || []).join(", "))}">
+		<label>描述</label><textarea id="pDesc">${esc(p.description)}</textarea>
+		${p.id ? `<label><input type="checkbox" id="pArch" ${p.archived ? "checked" : ""}> 归档</label>` : ""}`;
+}
+const projectBody = () => ({ name: $("#pName").value.trim(), tool: $("#pTool").value.trim() || null, model: $("#pModel").value.trim() || null,
+	tags: $("#pTags").value.split(/[,，]/).map((s) => s.trim()).filter(Boolean), description: $("#pDesc").value || null, ...($("#pArch") ? { archived: $("#pArch").checked } : {}) });
+function newProject() { dialog("<h3>新项目</h3>" + projectForm(), async () => { const j = await api("POST", "/api/projects", projectBody()); openProject(j.data.id); }); }
+function editProject() { dialog("<h3>编辑项目</h3>" + projectForm(cur), async () => { await api("PATCH", "/api/projects/" + cur.id, projectBody()); openProject(cur.id); }); }
+async function delProject() {
+	if (prompt(`删除项目「${cur.name}」及其全部 ${cur.message_count} 条消息？输入项目名确认`) !== cur.name) return;
+	await api("DELETE", "/api/projects/" + cur.id); cur = null; $("#composer").hidden = true; $("#main").innerHTML = '<div class="empty">已删除</div>'; loadProjects();
+}
+
+async function download(path) {
+	const r = await fetch(path, { headers: { authorization: "Bearer " + token } });
+	if (!r.ok) return alert("导出失败 " + r.status);
+	const cd = r.headers.get("content-disposition") || "";
+	const name = decodeURIComponent((cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="([^"]+)"/) || [, "export"])[1]);
+	const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await r.blob()), download: name }); a.click();
+}
+const exportProject = (f) => download(`/api/projects/${cur.id}/export?format=${f}`);
+const exportAll = () => download("/api/export");
+async function importAll(input) {
+	const f = input.files[0]; input.value = ""; if (!f) return;
+	const mode = prompt("导入模式：new = 作为新项目导入；restore = 按原 ID 覆盖；skip = 已存在则跳过", "new"); if (!mode) return;
+	const j = await api("POST", "/api/import?mode=" + mode, undefined, await f.text());
+	alert(j.data.projects.map((p) => `${p.status}: ${p.name} (${p.messages ?? 0} 条)`).join("\n")); loadProjects();
+}
+function importDialog() {
+	dialog(`<h3>导入到「${esc(cur.name)}」（追加到末尾）</h3>
+		<div class="row"><select id="imFmt"><option value="">自动识别</option><option value="text">纯文本（用户: / AI: 开头分段）</option><option value="json">JSON 数组</option><option value="jsonl">JSONL</option><option value="md">本系统导出的 Markdown</option></select>
+		<input id="imSpk" placeholder="自定义说话人，如 Kiro=assistant,老王=user" style="flex:1"><input type="file" id="imFile"></div>
+		<textarea id="imText" style="min-height:280px;margin-top:8px" placeholder="或直接粘贴内容"></textarea>
+		<div class="muted" id="imPrev"></div><button type="button" onclick="previewImport()">预览</button>`,
+		async () => { const j = await api("POST", importUrl(false), undefined, await importText()); alert(`导入 ${j.data.created} 条，跳过 ${j.data.skipped} 条`); openProject(cur.id); });
+}
+const importText = async () => $("#imFile").files[0] ? await $("#imFile").files[0].text() : $("#imText").value;
+const importUrl = (dry) => `/api/projects/${cur.id}/import?format=${$("#imFmt").value}&speakers=${encodeURIComponent($("#imSpk").value)}${dry ? "&dry_run=1" : ""}`;
+async function previewImport() {
+	const j = await api("POST", importUrl(true), undefined, await importText());
+	$("#imPrev").innerHTML = `识别为 ${j.data.format}，共 ${j.data.count} 条：<br>` + j.data.preview.map((m, i) => `${i + 1}. [${m.role}${m.author ? "/" + esc(m.author) : ""}] ${esc(m.content.slice(0, 60))}`).join("<br>");
+}
+function bulkDialog() {
+	dialog(`<h3>批量修改身份</h3><p class="muted">把匹配的消息统一改成新的角色/身份（留空表示不限/不改）</p>
+		<div class="row"><b>匹配</b><select id="bR"><option value="">任意角色</option>${roleOpts("")}</select><input id="bA" placeholder="当前身份（精确匹配）"></div>
+		<div class="row" style="margin-top:6px"><b>改为</b><select id="bR2"><option value="">不改角色</option>${roleOpts("")}</select><input id="bA2" placeholder="新身份"></div>`,
+		async () => {
+			const filter = {}, set = {};
+			if ($("#bR").value) filter.role = $("#bR").value; if ($("#bA").value) filter.author = $("#bA").value;
+			if ($("#bR2").value) set.role = $("#bR2").value; if ($("#bA2").value) set.author = $("#bA2").value;
+			const j = await api("POST", `/api/projects/${cur.id}/messages/bulk-update`, { filter, set, all: !Object.keys(filter).length });
+			alert(`已更新 ${j.data.updated} 条`); openProject(cur.id);
+		});
+}
+async function doSearch() {
+	const q = $("#q").value.trim(); if (!q) return;
+	const j = await api("GET", "/api/search?q=" + encodeURIComponent(q));
+	cur = null; $("#composer").hidden = true;
+	$("#main").innerHTML = `<h3>搜索「${esc(q)}」：${j.data.length} 条</h3>` + j.data.map((m) => `<div class="msg ${m.role}" style="cursor:pointer" onclick="openProject('${m.project_id}').then(()=>document.getElementById('m-${m.id}')?.scrollIntoView())">
+		<div class="hd"><span class="role">${esc(m.project_name)}</span><span>#${m.seq} ${ROLE_CN[m.role]}</span>${m.author ? `<span>${esc(m.author)}</span>` : ""}</div><pre>${esc(m.snippet)}</pre></div>`).join("");
+}
+
+fetch("/api/health").then((r) => r.json()).then((j) => { $("#ver").textContent = "v" + j.data.version; });
+if (!token) setToken(); else loadProjects();
+</script>
+</body>
+</html>

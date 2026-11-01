@@ -1,0 +1,13 @@
+{
+  "name": "vibe-coding-logger",
+  "version": "0.1.0",
+  "description": "Self-hosted log for vibe-coding chats: projects, ordered messages, editable roles, REST API, import/export, Docker.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.ts",
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/server.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts"
+  }
+}

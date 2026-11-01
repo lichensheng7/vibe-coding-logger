@@ -1,0 +1,1831 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Vibe Coding Logger API",
+  "version": "0.1.0",
+  "description": "记录与 AI 的 vibe coding 聊天。项目(project)隔离，消息(message)按 seq 连续排序；每条 user 消息开启新的一轮(turn)，其后的 assistant/tool/system/note 都属于这一轮。\n\n鉴权：`Authorization: Bearer <API_TOKEN>`（也可用 `X-API-Token` 头或 `?token=`）。\n\n时间字段均为毫秒时间戳；写入时 sent_at 也接受秒级时间戳或 ISO 字符串。"
+ },
+ "servers": [
+  {
+   "url": "/"
+  }
+ ],
+ "security": [
+  {
+   "bearer": []
+  }
+ ],
+ "tags": [
+  {
+   "name": "projects"
+  },
+  {
+   "name": "messages"
+  },
+  {
+   "name": "import-export"
+  },
+  {
+   "name": "misc"
+  }
+ ],
+ "paths": {
+  "/api/health": {
+   "get": {
+    "summary": "健康检查",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/projects": {
+   "get": {
+    "summary": "项目列表",
+    "tags": [
+     "projects"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectList"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "名称/描述模糊搜索"
+     },
+     {
+      "name": "tag",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "archived",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "all",
+        "only"
+       ]
+      },
+      "description": "默认不含归档"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   },
+   "post": {
+    "summary": "创建项目（可同时带 messages 一次写入）",
+    "tags": [
+     "projects"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectResp"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "allOf": [
+         {
+          "$ref": "#/components/schemas/ProjectInput"
+         },
+         {
+          "type": "object",
+          "properties": {
+           "messages": {
+            "type": "array",
+            "items": {
+             "$ref": "#/components/schemas/MessageInput"
+            }
+           },
+           "on_duplicate": {
+            "type": "string",
+            "enum": [
+             "skip",
+             "update",
+             "error"
+            ]
+           }
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}": {
+   "get": {
+    "summary": "项目详情（含统计）",
+    "tags": [
+     "projects"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectResp"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ]
+   },
+   "patch": {
+    "summary": "修改项目",
+    "tags": [
+     "projects"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectResp"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProjectInput"
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "删除项目及其全部消息",
+    "tags": [
+     "projects"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ]
+   }
+  },
+  "/api/projects/{id}/messages": {
+   "get": {
+    "summary": "消息列表（按 seq 升序，含 turn）",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MessageList"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     },
+     {
+      "name": "role",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "author",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "内容搜索"
+     },
+     {
+      "name": "turn",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "from_seq",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "默认 500，最大 5000"
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   },
+   "post": {
+    "summary": "追加/插入消息：单条对象、{messages:[...]} 或裸数组",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "description": "单条返回 {data: Message, status: created|skipped|updated}，HTTP 201/200；批量返回 {data:{created,updated,skipped,items:[{id,seq,status,ext_id}]}}。带 ext_id 可安全重试。",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     },
+     {
+      "name": "position",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "插入到第 N 条之前"
+     },
+     {
+      "name": "after_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "before_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "on_duplicate",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "skip",
+        "update",
+        "error"
+       ]
+      },
+      "description": "ext_id 已存在时的处理，默认 skip"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "oneOf": [
+         {
+          "$ref": "#/components/schemas/MessageInput"
+         },
+         {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/MessageInput"
+          }
+         },
+         {
+          "type": "object",
+          "properties": {
+           "messages": {
+            "type": "array",
+            "items": {
+             "$ref": "#/components/schemas/MessageInput"
+            }
+           },
+           "position": {
+            "type": "integer"
+           },
+           "after_id": {
+            "type": "string"
+           },
+           "before_id": {
+            "type": "string"
+           },
+           "on_duplicate": {
+            "type": "string"
+           }
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "summary": "用新数组整体替换项目全部消息",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "messages": {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/MessageInput"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/turns": {
+   "get": {
+    "summary": "按轮分组：[{turn, prompt, replies[]}]，turn 0 为第一条用户消息之前的内容",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ]
+   }
+  },
+  "/api/projects/{id}/order": {
+   "put": {
+    "summary": "按 id 数组整体重排（必须包含全部消息各一次）",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "ids"
+        ],
+        "properties": {
+         "ids": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/messages/delete": {
+   "post": {
+    "summary": "批量删除",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "ids": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/messages/bulk-update": {
+   "post": {
+    "summary": "批量修改角色/身份/格式",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "description": "例：{filter:{author:\"ChatGPT\"}, set:{author:\"GPT-5\"}}",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "ids": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "filter": {
+          "type": "object",
+          "properties": {
+           "role": {
+            "type": "string"
+           },
+           "author": {
+            "type": [
+             "string",
+             "null"
+            ]
+           }
+          }
+         },
+         "all": {
+          "type": "boolean"
+         },
+         "set": {
+          "type": "object",
+          "properties": {
+           "role": {
+            "type": "string"
+           },
+           "author": {
+            "type": [
+             "string",
+             "null"
+            ]
+           },
+           "format": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/messages/{id}": {
+   "get": {
+    "summary": "单条消息",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "消息 id"
+     }
+    ]
+   },
+   "patch": {
+    "summary": "修改内容/角色/身份/格式/时间/meta，或同时移动(position/after_id/before_id)",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "消息 id"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MessageInput"
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "summary": "删除单条（后续 seq 自动前移）",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "消息 id"
+     }
+    ]
+   }
+  },
+  "/api/messages/{id}/move": {
+   "post": {
+    "summary": "移动到新位置",
+    "tags": [
+     "messages"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "消息 id"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "position": {
+          "type": "integer"
+         },
+         "after_id": {
+          "type": "string"
+         },
+         "before_id": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/export": {
+   "get": {
+    "summary": "导出单个项目",
+    "tags": [
+     "import-export"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     },
+     {
+      "name": "format",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "json",
+        "jsonl",
+        "md"
+       ]
+      }
+     },
+     {
+      "name": "download",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "0 = 不加 attachment 头"
+     }
+    ]
+   }
+  },
+  "/api/export": {
+   "get": {
+    "summary": "导出全部（或 ?ids=a,b）为 JSON 备份",
+    "tags": [
+     "import-export"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "ids",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/api/import": {
+   "post": {
+    "summary": "导入 JSON 导出文件（单项目或全部）",
+    "tags": [
+     "import-export"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "mode",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "new",
+        "restore",
+        "skip"
+       ]
+      },
+      "description": "new: 作为新项目；restore: 保留原 id 并覆盖；skip: 已存在则跳过"
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      },
+      "application/json": {
+       "schema": {}
+      }
+     },
+     "description": "本系统导出的 JSON"
+    }
+   }
+  },
+  "/api/projects/{id}/import": {
+   "post": {
+    "summary": "把文件内容追加到项目",
+    "tags": [
+     "import-export"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "项目 id 或 slug"
+     },
+     {
+      "name": "format",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "enum": [
+        "json",
+        "jsonl",
+        "md",
+        "text"
+       ]
+      },
+      "description": "缺省自动识别"
+     },
+     {
+      "name": "speakers",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "text 格式自定义说话人映射：Kiro=assistant,老王=user"
+     },
+     {
+      "name": "dry_run",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "1 = 只预览不写入"
+     },
+     {
+      "name": "position",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "after_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "on_duplicate",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      },
+      "application/json": {
+       "schema": {}
+      }
+     },
+     "description": "json: 消息数组 / {messages} / 导出文件；jsonl: 每行一条；md: 本系统导出的 Markdown；text: 以「用户:」「AI:」「Claude:」等开头分段的纯文本"
+    }
+   }
+  },
+  "/api/search": {
+   "get": {
+    "summary": "跨项目全文搜索",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "project_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   }
+  },
+  "/api/stats": {
+   "get": {
+    "summary": "全局统计",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/roles": {
+   "get": {
+    "summary": "可用角色",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/backups": {
+   "get": {
+    "summary": "SQLite 备份列表",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "summary": "立即备份",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/backups/{name}": {
+   "get": {
+    "summary": "下载备份文件",
+    "tags": [
+     "misc"
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope"
+        }
+       }
+      }
+     },
+     "4XX": {
+      "description": "错误",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "name",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "bearer": {
+    "type": "http",
+    "scheme": "bearer"
+   }
+  },
+  "schemas": {
+   "Envelope": {
+    "type": "object",
+    "properties": {
+     "success": {
+      "type": "boolean"
+     },
+     "data": {}
+    }
+   },
+   "Error": {
+    "type": "object",
+    "properties": {
+     "success": {
+      "const": false
+     },
+     "message": {
+      "type": "string"
+     },
+     "details": {}
+    }
+   },
+   "ProjectInput": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "slug": {
+      "type": "string"
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "tool": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "Cursor / Claude Code / ChatGPT …"
+     },
+     "model": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "tags": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "meta": {
+      "type": "object"
+     },
+     "archived": {
+      "type": "boolean"
+     }
+    }
+   },
+   "Project": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "slug": {
+      "type": "string"
+     },
+     "description": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "tool": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "model": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "tags": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "meta": {
+      "type": "object"
+     },
+     "archived": {
+      "type": "boolean"
+     },
+     "message_count": {
+      "type": "integer"
+     },
+     "turn_count": {
+      "type": "integer"
+     },
+     "last_message_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    }
+   },
+   "ProjectResp": {
+    "type": "object",
+    "properties": {
+     "success": {
+      "type": "boolean"
+     },
+     "data": {
+      "$ref": "#/components/schemas/Project"
+     }
+    }
+   },
+   "ProjectList": {
+    "type": "object",
+    "properties": {
+     "success": {
+      "type": "boolean"
+     },
+     "total": {
+      "type": "integer"
+     },
+     "data": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Project"
+      }
+     }
+    }
+   },
+   "MessageInput": {
+    "type": "object",
+    "properties": {
+     "role": {
+      "type": "string",
+      "enum": [
+       "user",
+       "assistant",
+       "system",
+       "tool",
+       "note"
+      ],
+      "description": "也接受别名：human/我/用户 → user；ai/bot/claude/gpt/助手 → assistant；function/terminal → tool；comment/备注 → note"
+     },
+     "author": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "具体身份/模型，如 我、Claude Code、GPT-5、bash（别名 name / model）"
+     },
+     "content": {
+      "description": "字符串；也接受 OpenAI 风格 content parts 数组（别名 text / message）"
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "markdown",
+       "text",
+       "code",
+       "json",
+       "html"
+      ]
+     },
+     "ext_id": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "调用方自带唯一 ID，项目内去重，用于安全重试"
+     },
+     "sent_at": {
+      "description": "原始聊天时间：毫秒/秒时间戳或 ISO 字符串（别名 timestamp / time）"
+     },
+     "meta": {
+      "type": "object",
+      "description": "任意附加信息：工具调用、改动文件、token 数…"
+     }
+    }
+   },
+   "Message": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "project_id": {
+      "type": "string"
+     },
+     "seq": {
+      "type": "integer"
+     },
+     "turn": {
+      "type": "integer"
+     },
+     "role": {
+      "type": "string"
+     },
+     "author": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "content": {
+      "type": "string"
+     },
+     "format": {
+      "type": "string"
+     },
+     "ext_id": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "meta": {
+      "type": "object"
+     },
+     "sent_at": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     },
+     "created_at": {
+      "type": "integer"
+     },
+     "updated_at": {
+      "type": "integer"
+     }
+    }
+   },
+   "MessageList": {
+    "type": "object",
+    "properties": {
+     "success": {
+      "type": "boolean"
+     },
+     "total": {
+      "type": "integer"
+     },
+     "data": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Message"
+      }
+     }
+    }
+   }
+  }
+ }
+}
